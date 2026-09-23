@@ -91,7 +91,6 @@ RAG Trail/
 ├── embeddings.py       # local embeddings
 ├── resume_io.py        # PDF / DOCX / text extraction
 ├── config.py           # settings
-├── app.py              # (legacy) Streamlit version, superseded by frontend/
 ├── frontend/           # React + Vite frontend
 ├── scripts/smoke_test.py
 └── data/               # sample resume + JD

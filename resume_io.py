@@ -17,11 +17,6 @@ def extract_bytes(data: bytes, filename: str) -> str:
     return data.decode("utf-8", errors="ignore")
 
 
-def extract_text(file) -> str:
-    """Extract text from a Streamlit upload object (kept for the legacy app.py)."""
-    return extract_bytes(file.getvalue(), file.name)
-
-
 def _pdf(buf) -> str:
     reader = pypdf.PdfReader(buf)
     return "\n".join(page.extract_text() or "" for page in reader.pages)

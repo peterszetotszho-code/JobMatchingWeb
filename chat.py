@@ -1,4 +1,4 @@
-"""求職追問：本地 RAG（履歷 + JD + 分析）+ 聯網搜尋的問答。"""
+"""求職追問：本地 RAG（履歷 + JD + 分析）+ 聯網搜尋（香港導向）。"""
 from __future__ import annotations
 
 import numpy as np
@@ -10,27 +10,35 @@ import web_search
 
 ROUTER_SYSTEM = """你是求職助手。判斷用戶的問題是否需要「搜尋網際網路」才能回答。
 
-需要聯網：問公司背景／業務、行業資訊、職位行情、外部事實等，本地履歷／JD／分析無法回答的。
+需要聯網：問公司背景／業務、行業資訊、職位行情、薪資行情、外部事實等，本地履歷／JD／分析無法回答的。
 不需要聯網：問這次求職分析、履歷怎麼改、JD 要求等，本地資料已足夠。
+
+搜尋關鍵字（query）的規則：
+- 一定要以「香港」為主，避免搜到台灣／其他地區的結果。
+- 若問題涉及「這家公司／這份工作」，請從 JD 找出公司名稱，關鍵字要包含公司名。
+- 範例：問薪資 →「香港 IT 支援 薪資」；問公司業務 →「和記電訊香港 業務」。
 
 只輸出 JSON，不要輸出其他文字。"""
 
-ROUTER_USER = """用戶問題：{question}
+ROUTER_USER = """職位描述（JD，供判斷公司名稱與職位）：
+{jd}
+
+用戶問題：{question}
 
 請輸出 JSON：
-{{"needs_web": true 或 false, "query": "要搜尋的關鍵字（needs_web=true 時填，否則空字串）"}}"""
+{{"needs_web": true 或 false, "query": "香港導向的搜尋關鍵字（needs_web=true 時填，否則空字串）"}}"""
 
-ANSWER_SYSTEM = """你是求職助手。請根據提供的背景資料回答用戶問題，回答要具體、有幫助、簡潔。引用網頁資料時用 [網頁1] 這類標註。只輸出回答文字，不要其他。"""
+ANSWER_SYSTEM = """你是求職助手。請根據提供的背景資料回答用戶問題，回答要具體、有幫助、簡潔，用自然流暢的中文。不要輸出網址、引用標記或多餘格式。只輸出回答文字。"""
 
 ANSWER_USER = """背景資料（履歷／JD／分析相關片段）：
 {local}
 
-網頁搜尋結果：
+網頁搜尋結果（僅供參考）：
 {web}
 
 用戶問題：{question}
 
-請回答（用中文，簡潔具體）。"""
+請用自然中文回答（不要附網址或 [網頁N] 標記）。"""
 
 
 def _build_corpus(resume: str, jd: str, analysis: str) -> list[dict]:
@@ -58,8 +66,8 @@ def _retrieve(question: str, corpus: list[dict], top_k: int = 6) -> list[dict]:
     return [corpus[i] for i in order]
 
 
-def _route(question: str) -> tuple[bool, str]:
-    data = llm.chat_json(ROUTER_SYSTEM, ROUTER_USER.format(question=question))
+def _route(question: str, jd: str) -> tuple[bool, str]:
+    data = llm.chat_json(ROUTER_SYSTEM, ROUTER_USER.format(question=question, jd=jd))
     if isinstance(data, dict):
         return bool(data.get("needs_web", False)), data.get("query", "") or question
     return False, ""
@@ -67,9 +75,7 @@ def _route(question: str) -> tuple[bool, str]:
 
 def _answer_text(question: str, local: list[dict], web: list[dict]) -> str:
     local_txt = "\n".join(f"[{c['source']}] {c['text']}" for c in local) or "（無）"
-    web_txt = "\n".join(
-        f"[網頁{i + 1}] {r['title']}：{r['snippet']} ({r['url']})" for i, r in enumerate(web)
-    ) or "（無）"
+    web_txt = "\n".join(f"- {r['title']}：{r['snippet']}" for r in web) or "（無）"
     return ANSWER_USER.format(local=local_txt, web=web_txt, question=question)
 
 
@@ -77,7 +83,7 @@ def ask_question(question: str, resume: str, jd: str, analysis: str) -> dict:
     """非串流：回傳 {answer, needs_web, web_sources, local_sources}。"""
     corpus = _build_corpus(resume, jd, analysis)
     local = _retrieve(question, corpus)
-    needs_web, query = _route(question)
+    needs_web, query = _route(question, jd)
     web = web_search.search(query) if needs_web else []
     answer = llm.chat(ANSWER_SYSTEM, _answer_text(question, local, web)).strip()
     return {
@@ -95,7 +101,7 @@ def ask_question_stream(question: str, resume: str, jd: str, analysis: str):
     local = _retrieve(question, corpus)
 
     yield {"type": "stage", "message": "判斷是否需要聯網…"}
-    needs_web, query = _route(question)
+    needs_web, query = _route(question, jd)
 
     web = []
     if needs_web:

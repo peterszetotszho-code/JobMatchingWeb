@@ -176,13 +176,6 @@ export default function App() {
             {messages.map((m, i) => (
               <div key={i} className={`msg ${m.role}`}>
                 <div className="msg-content">{m.content}</div>
-                {m.sources?.length > 0 && (
-                  <div className="sources">
-                    {m.sources.map((s, j) => (
-                      <a key={j} href={s.url} target="_blank" rel="noreferrer">🔗 {s.title}</a>
-                    ))}
-                  </div>
-                )}
               </div>
             ))}
             {chatLoading && (

@@ -1,6 +1,7 @@
 # Job Fit Assistant
 
 > **Repository:** [github.com/peterszetotszho-code/JobMatchingWeb](https://github.com/peterszetotszho-code/JobMatchingWeb)
+> **Live demo:** https://slot-collectibles-arise-premiere.trycloudflare.com (temporary Cloudflare Tunnel — may change)
 
 A resume-to-job-description matching tool built with **LLM + RAG**. Upload your resume, paste a job description (e.g. from JobsDB), and the app decomposes the JD into atomic requirements, retrieves supporting evidence from your resume, judges fit per requirement, and outputs a **fit score + a detailed analysis**. It also supports follow-up Q&A with optional live web search.
 

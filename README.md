@@ -1,3 +1,11 @@
+---
+title: Job Fit Assistant
+emoji: 💼
+sdk: docker
+app_port: 7860
+license: mit
+---
+
 # Job Fit Assistant
 
 > **Repository:** [github.com/peterszetotszho-code/JobMatchingWeb](https://github.com/peterszetotszho-code/JobMatchingWeb)

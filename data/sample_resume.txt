@@ -1,0 +1,28 @@
+陳大文 CHAN Tai Man
+電話 Phone: +852 9123 4567 ｜ 電郵 Email: tai.man.chan@example.com
+LinkedIn: linkedin.com/in/taimanchan
+
+學歷 EDUCATION
+香港中文大學 The Chinese University of Hong Kong
+計算機科學學士 BSc Computer Science，2026 年畢業（GPA 3.6/4.0）
+相關課程：機器學習、資料結構、資料庫系統、軟件工程
+
+技能 SKILLS
+- 程式語言：Python、Java、SQL、JavaScript
+- 機器學習：PyTorch、scikit-learn、LangChain
+- 網頁開發：Streamlit、FastAPI、React（基礎）
+- 工具：Git、Docker（基礎）、Linux
+
+項目 PROJECTS
+1. 合約問答助手（RAG）｜畢業專題
+   使用 LangChain + Chroma 建立文件問答系統，支援引用來源；自建評估集，檢索命中率 85%。
+2. 求職履歷分析器｜個人項目
+   用 Python + LLM API 解析 JD 與履歷，計算技能匹配度並生成改進建議。
+
+工作經驗 EXPERIENCE
+香港科技園實習生（2025 夏季）
+- 協助開發數據儀表板（Python + SQL）
+- 撰寫技術文件與使用者指南
+
+語言 LANGUAGES
+- 粵語（母語）、普通話（流利）、英語（流利 IELTS 7.0）

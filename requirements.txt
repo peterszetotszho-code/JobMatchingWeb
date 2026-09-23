@@ -1,0 +1,6 @@
+streamlit>=1.36
+openai>=1.40
+sentence-transformers>=3.0
+numpy>=2.0
+pypdf>=4.3
+python-docx>=1.1

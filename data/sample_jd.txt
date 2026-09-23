@@ -1,0 +1,18 @@
+職位：AI 工程師 AI Engineer
+
+職責 Responsibilities
+- 建立與維護 LLM、RAG、Agent 或多模態應用
+- 開發、部署雲端或本機 AI 服務，包括 API 整合與環境設定
+- 參與需求分析、資料準備、原型、測試與上線
+- 評估引用來源、準確性與可追溯性，改善檢索與提示詞
+
+要求 Requirements
+- 計算機科學、AI、軟件工程等相關學士學位
+- 約一年相關 AI、軟件或資料經驗（含實習）
+- 熟悉 Python、LLM API、REST API 與 JSON
+- 至少一個可展示的 LLM 應用（如 RAG 問答、agent 工作流）
+
+加分 Preferred
+- 模型訓練或微調經驗
+- 本機／私有部署、模型服務、GPU、容器或效能調校
+- LangChain / LlamaIndex；建造文件、圖紙、影像整合

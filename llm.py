@@ -1,4 +1,4 @@
-"""DeepSeek（OpenAI 相容）客戶端。"""
+"""DeepSeek (OpenAI-compatible) client."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import config
 
 _client: OpenAI | None = None
 
-# deepseek-flash 是推理型模型，關掉思考後快約 3 倍、也更省 token
+# deepseek-flash is a reasoning model; disabling thinking makes it ~3x faster and cheaper
 _THINKING = {"thinking": {"type": "disabled"}}
 
 
@@ -31,7 +31,7 @@ def _messages(system: str, user: str) -> list[dict]:
 
 
 def chat(system: str, user: str, temperature: float = 0.0) -> str:
-    """呼叫 LLM，回傳純文字內容。"""
+    """Call the LLM and return plain text."""
     resp = get_client().chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=_messages(system, user),
@@ -42,7 +42,7 @@ def chat(system: str, user: str, temperature: float = 0.0) -> str:
 
 
 def chat_stream(system: str, user: str, temperature: float = 0.0):
-    """串流版：yield 文字片段。"""
+    """Streaming variant: yields text chunks."""
     resp = get_client().chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=_messages(system, user),
@@ -56,9 +56,9 @@ def chat_stream(system: str, user: str, temperature: float = 0.0):
 
 
 def chat_json(system: str, user: str, temperature: float = 0.0):
-    """呼叫 LLM，回傳解析後的 JSON（dict 或 list）。
+    """Call the LLM and return parsed JSON (dict or list).
 
-    刻意不用 response_format=json_object（有額外延遲），改由 _parse_json 手動抽取。
+    Deliberately avoids response_format=json_object (extra latency); parses manually instead.
     """
     return _parse_json(chat(system, user, temperature))
 
@@ -67,7 +67,7 @@ def _parse_json(content: str):
     try:
         return json.loads(content)
     except json.JSONDecodeError:
-        # 若模型偶爾在 JSON 外多輸出文字，抓第一個 { ... }
+        # if the model wraps JSON in extra text, extract the first { ... } block
         start = content.find("{")
         end = content.rfind("}")
         if start != -1 and end != -1 and end > start:

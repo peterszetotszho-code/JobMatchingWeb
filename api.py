@@ -1,4 +1,4 @@
-"""FastAPI 後端：把求職助手包成 REST API。"""
+"""FastAPI backend: expose the job-fit assistant as a REST API."""
 from __future__ import annotations
 
 import json
@@ -19,15 +19,15 @@ import resume_io
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    embeddings.warmup()  # 啟動時預先載入 embedding 模型，避免首次分析冷啟動
+    embeddings.warmup()  # preload the embedding model at startup to avoid cold start on first analysis
     yield
 
 
-app = FastAPI(title="求職助手 Job Fit Assistant API", lifespan=lifespan)
+app = FastAPI(title="Job Fit Assistant API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 開發用；正式部署請改成前端網域
+    allow_origins=["*"],  # dev only; restrict to your frontend domain in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -46,14 +46,14 @@ def health() -> dict:
 
 @app.post("/api/parse")
 async def parse_file(file: UploadFile = File(...)) -> dict:
-    """上傳 PDF/DOCX/TXT，回傳抽取出的文字。"""
+    """Upload a PDF/DOCX/TXT file and return the extracted text."""
     data = await file.read()
     return {"text": resume_io.extract_bytes(data, file.filename or "")}
 
 
 @app.post("/api/analyze")
 def analyze(req: AnalyzeRequest) -> dict:
-    """非串流：一次性回傳完整結果。"""
+    """Non-streaming: return the full result at once."""
     result = matcher.analyze(req.resume, req.jd)
     if "error" in result:
         return {"error": result["error"]}
@@ -62,7 +62,7 @@ def analyze(req: AnalyzeRequest) -> dict:
 
 @app.post("/api/analyze/stream")
 def analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
-    """串流（SSE）：先回傳階段訊息，再逐字串流分析文字，最後回傳指標。"""
+    """Streaming (SSE): stage messages, then the analysis text token-by-token, then the metrics."""
 
     def gen():
         try:
@@ -83,13 +83,13 @@ class AskRequest(BaseModel):
 
 @app.post("/api/ask")
 def ask(req: AskRequest) -> dict:
-    """求職追問（非串流）：本地 RAG + 聯網搜尋。"""
+    """Follow-up Q&A (non-streaming): local RAG + web search."""
     return chat.ask_question(req.question, req.resume, req.jd, req.analysis)
 
 
 @app.post("/api/ask/stream")
 def ask_stream(req: AskRequest) -> StreamingResponse:
-    """求職追問（串流 SSE）。"""
+    """Follow-up Q&A (streaming SSE)."""
 
     def gen():
         try:
@@ -101,8 +101,8 @@ def ask_stream(req: AskRequest) -> StreamingResponse:
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
-# 掛載已 build 的 React 前端（若存在），單一伺服器即可服務整站。
-# 注意：/api/* 路由先註冊，優先於此掛載，所以不會被靜態檔蓋掉。
+# Serve the built React frontend (if present) so a single server hosts the whole site.
+# Note: /api/* routes are registered first, so they take precedence over this mount.
 _FRONTEND_DIST = Path(__file__).parent / "frontend" / "dist"
 if _FRONTEND_DIST.exists():
     app.mount("/", StaticFiles(directory=str(_FRONTEND_DIST), html=True), name="frontend")

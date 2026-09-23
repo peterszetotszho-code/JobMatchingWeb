@@ -1,4 +1,4 @@
-"""求職追問：本地 RAG（履歷 + JD + 分析）+ 聯網搜尋（香港導向）。"""
+"""Follow-up Q&A: local RAG (resume + JD + analysis) + web search (HK-oriented)."""
 from __future__ import annotations
 
 import numpy as np
@@ -80,7 +80,7 @@ def _answer_text(question: str, local: list[dict], web: list[dict]) -> str:
 
 
 def ask_question(question: str, resume: str, jd: str, analysis: str) -> dict:
-    """非串流：回傳 {answer, needs_web, web_sources, local_sources}。"""
+    """Non-streaming: returns {answer, needs_web, web_sources, local_sources}."""
     corpus = _build_corpus(resume, jd, analysis)
     local = _retrieve(question, corpus)
     needs_web, query = _route(question, jd)
@@ -95,7 +95,7 @@ def ask_question(question: str, resume: str, jd: str, analysis: str) -> dict:
 
 
 def ask_question_stream(question: str, resume: str, jd: str, analysis: str):
-    """串流版：yield 事件 dict（stage / chunk / result）。"""
+    """Streaming variant: yields event dicts (stage / chunk / result)."""
     yield {"type": "stage", "message": "檢索相關資料…"}
     corpus = _build_corpus(resume, jd, analysis)
     local = _retrieve(question, corpus)

@@ -1,4 +1,4 @@
-"""快速自檢：用 data/ 範例檔跑完整 pipeline（無需啟動 Streamlit）。"""
+"""Quick self-test: run the full pipeline on data/ samples (no server needed)."""
 from __future__ import annotations
 
 import sys

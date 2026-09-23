@@ -1,26 +1,25 @@
-# 求職助手 Job Fit Assistant
+# Job Fit Assistant
 
-一個以 **LLM + RAG** 打造的求職比對工具：上傳履歷，貼上求職網站（JobsDB）的職位描述（JD），系統會把 JD 拆成逐條要求、逐條檢索履歷證據並判斷符合度，最後輸出**符合度分數 + 詳細分析**。
+A resume-to-job-description matching tool built with **LLM + RAG**. Upload your resume, paste a job description (e.g. from JobsDB), and the app decomposes the JD into atomic requirements, retrieves supporting evidence from your resume, judges fit per requirement, and outputs a **fit score + a detailed analysis**. It also supports follow-up Q&A with optional live web search.
 
-A resume-to-JD matching tool built with LLM + RAG. Upload your resume, paste a job description (e.g. from JobsDB), and get a fit score plus a detailed, traceable analysis.
-
-## 技術棧 Tech Stack
-| 部分 | 技術 |
+## Tech Stack
+| Part | Tech |
 |---|---|
-| 前端 | React + Vite |
-| 後端 | FastAPI（REST + SSE 串流） |
-| LLM | DeepSeek（`deepseek-flash`，關閉 thinking 加速） |
-| Embedding | `paraphrase-multilingual-MiniLM-L12-v2`（本機，繁中 + 英文） |
-| 檔案解析 | pypdf / python-docx |
+| Frontend | React + Vite |
+| Backend | FastAPI (REST + SSE streaming) |
+| LLM | DeepSeek (`deepseek-flash`, thinking disabled) |
+| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, Chinese + English) |
+| Web search | DuckDuckGo (free, no API key) |
+| File parsing | pypdf / python-docx |
 
-## 架構 Architecture
+## Architecture
 ```
-React 前端 (Vite) ──HTTP/JSON + SSE──▶ FastAPI (api.py) ──▶ matcher ──▶ DeepSeek + 本機 embedding
+React (Vite) ──HTTP/JSON + SSE──▶ FastAPI (api.py) ──▶ matcher / chat ──▶ DeepSeek + local embeddings + DuckDuckGo
 ```
 
-## 安裝 Setup
+## Setup
 
-### 後端 Backend
+### Backend
 ```bash
 python -m venv .venv
 # Windows:
@@ -30,69 +29,70 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
-設定 DeepSeek API key（擇一）：
+Set your DeepSeek API key (either):
 ```bash
 set DEEPSEEK_API_KEY=sk-xxxx        # Windows cmd
 export DEEPSEEK_API_KEY=sk-xxxx     # bash
-# 或複製 .env.example 為 .env 並填入 key
+# or copy .env.example to .env and fill in the key
 ```
 
-### 前端 Frontend
+### Frontend
 ```bash
 cd frontend
 npm install
 ```
 
-## 執行 Run
+## Run
 
-### 方式一：單一伺服器（先 build 前端）
+### Option 1: single server (build frontend first)
 ```bash
 cd frontend && npm run build && cd ..
 .venv\Scripts\python -m uvicorn api:app --host 127.0.0.1 --port 8000
-# 開啟 http://localhost:8000（FastAPI 同時服務 API 與前端）
+# open http://localhost:8000 (FastAPI serves both the API and the frontend)
 ```
 
-### 方式二：開發模式（前後端分離、前端熱更新）
+### Option 2: dev mode (hot-reload frontend)
 ```bash
-# 終端 1 —— 後端
+# terminal 1 — backend
 .venv\Scripts\python -m uvicorn api:app --reload --port 8000
 
-# 終端 2 —— 前端
+# terminal 2 — frontend
 cd frontend && npm run dev
-# 開啟 http://localhost:5173（Vite 會把 /api proxy 到 8000）
+# open http://localhost:5173 (Vite proxies /api to :8000)
 ```
 
-## API 端點
-| 方法 | 路徑 | 說明 |
+## API
+| Method | Path | Description |
 |---|---|---|
-| GET | `/api/health` | 健康檢查 |
-| POST | `/api/parse` | 上傳 PDF/DOCX/TXT，回傳抽取文字 |
-| POST | `/api/analyze` | 完整分析（非串流，一次回傳） |
-| POST | `/api/analyze/stream` | 串流分析（SSE：階段訊息 → 逐字分析 → 指標） |
+| GET | `/api/health` | Health check |
+| POST | `/api/parse` | Upload PDF/DOCX/TXT, return extracted text |
+| POST | `/api/analyze` | Full analysis (non-streaming) |
+| POST | `/api/analyze/stream` | Streaming analysis (SSE) |
+| POST | `/api/ask` | Follow-up Q&A (non-streaming) |
+| POST | `/api/ask/stream` | Follow-up Q&A (SSE) |
 
-## 自檢 Smoke test
-```bash
-python scripts/smoke_test.py
-```
+## How it works
+1. **Decompose** — the LLM splits the JD into atomic requirements.
+2. **Retrieve** — each requirement is embedded and matched against resume chunks (evidence).
+3. **Judge** — the LLM judges each requirement (`matched / partial / gap`) using the retrieved evidence.
+4. **Score** — a 0–100 fit score is computed deterministically (never asked of the LLM).
+5. **Analyze** — the LLM writes a detailed 300+ char analysis (streamed to the UI).
 
-## 運作原理 How it works
-1. **拆解**：LLM 把 JD 拆成原子要求。
-2. **檢索**：每條要求用本機 embedding 檢索履歷片段當證據。
-3. **判斷**：LLM 依證據逐條判 `matched / partial / gap`。
-4. **打分**：以確定性方式算 0–100 分（不直接問 LLM 要數字）。
-5. **分析**：LLM 生成 300+ 字詳細分析（支援串流逐字顯示）。
+Follow-up Q&A: an LLM router decides whether the question needs local context (resume / JD / analysis) or live web search (DuckDuckGo), then answers in plain Chinese.
 
-## 資料夾結構 Project structure
+## Project structure
 ```
 RAG Trail/
-├── api.py              # FastAPI 後端（REST + SSE）
-├── matcher.py          # 核心：拆解 → 檢索 → 判斷 → 打分 → 分析
-├── llm.py              # DeepSeek 客戶端（含串流）
-├── embeddings.py       # 本機 embedding
-├── resume_io.py        # PDF / DOCX / 文字抽取
-├── config.py           # 模型、閾值等設定
-├── app.py              # （舊）Streamlit 版，已由 frontend 取代
-├── frontend/           # React + Vite 前端
+├── api.py              # FastAPI backend (REST + SSE)
+├── matcher.py          # core: decompose → retrieve → judge → score → analyze
+├── chat.py             # follow-up Q&A (local RAG + web search)
+├── web_search.py       # DuckDuckGo search (HK-oriented)
+├── llm.py              # DeepSeek client (incl. streaming)
+├── embeddings.py       # local embeddings
+├── resume_io.py        # PDF / DOCX / text extraction
+├── config.py           # settings
+├── app.py              # (legacy) Streamlit version, superseded by frontend/
+├── frontend/           # React + Vite frontend
 ├── scripts/smoke_test.py
-└── data/               # 範例履歷 + JD
+└── data/               # sample resume + JD
 ```

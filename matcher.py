@@ -1,4 +1,4 @@
-"""核心邏輯：JD 拆解 → 檢索證據 → 判斷 → 打分 + 詳細分析。"""
+"""Core logic: decompose JD → retrieve evidence → judge → score + detailed analysis."""
 from __future__ import annotations
 
 import numpy as np
@@ -7,7 +7,7 @@ import config
 import llm
 import embeddings
 
-# ---------- 提示詞（繁體中文 + 英文，配合香港市場） ----------
+# ---------- Prompts (Traditional Chinese + English, for the HK market) ----------
 
 DECOMPOSE_SYSTEM = """你是一位熟悉香港就業市場的招聘顧問。請把求職者提供的「職位描述（JD）」拆解成一條條「可獨立核對的錄取要求」。
 
@@ -47,10 +47,10 @@ ANALYSIS_USER = """逐條判斷結果：
 請寫一段**至少 300 字**的詳細分析，具體說明候選人符合了哪些要求（舉出對應技能或經驗）、哪些只部分符合、哪些明顯欠缺，並簡要解釋原因；內容要具體充實、避免空洞。只輸出分析文字，不要其他。"""
 
 
-# ---------- 資料處理 ----------
+# ---------- Data processing ----------
 
 def decompose_jd(jd_text: str) -> list[dict]:
-    """用 LLM 把 JD 拆成原子要求。"""
+    """Use the LLM to decompose the JD into atomic requirements."""
     user = DECOMPOSE_USER.format(jd=jd_text)
     data = llm.chat_json(DECOMPOSE_SYSTEM, user)
     if isinstance(data, list):
@@ -63,7 +63,7 @@ def decompose_jd(jd_text: str) -> list[dict]:
 
 
 def _normalize_requirement(item, idx: int) -> dict:
-    """把 LLM 回傳的各種欄位名（requirement / text / description…）正規化。"""
+    """Normalize the various field names the LLM may return (requirement / text / description...)."""
     if isinstance(item, str):
         return {"id": idx, "category": "other", "requirement": item}
     text = (
@@ -81,7 +81,7 @@ def _normalize_requirement(item, idx: int) -> dict:
 
 
 def chunk_resume(text: str) -> list[dict]:
-    """把履歷按行切成片段（每一行就是一個可被引用的證據單位）。"""
+    """Split the resume into line chunks (each line is a citable evidence unit)."""
     chunks = []
     for i, line in enumerate(text.splitlines()):
         line = line.strip()
@@ -91,10 +91,10 @@ def chunk_resume(text: str) -> list[dict]:
     return chunks
 
 
-# ---------- 檢索 ----------
+# ---------- Retrieval ----------
 
 def _retrieve(requirements: list[dict], chunks: list[dict]) -> tuple[dict, dict]:
-    """對每條要求檢索 top-k 履歷片段，回傳 (evidence_map, best_sim_map)。"""
+    """Retrieve top-k resume chunks per requirement; returns (evidence_map, best_sim_map)."""
     req_texts = [r["requirement"] for r in requirements]
     chunk_texts = [c["text"] for c in chunks]
     req_vecs = embeddings.embed(req_texts)
@@ -110,10 +110,10 @@ def _retrieve(requirements: list[dict], chunks: list[dict]) -> tuple[dict, dict]
     return evidence_map, best_sim_map
 
 
-# ---------- 判斷 ----------
+# ---------- Judgment ----------
 
 def _judge_all(requirements: list[dict], evidence_map: dict) -> dict:
-    """一次 LLM 呼叫判斷所有要求，回傳 {id: {verdict, reason}}。"""
+    """Judge all requirements in one LLM call; returns {id: {verdict, reason}}."""
     lines = []
     for i, req in enumerate(requirements):
         rid = req.get("id", i + 1)
@@ -178,7 +178,7 @@ def _summarize(results: list[dict], analysis: str) -> dict:
     }
 
 
-# ---------- 分析（詳細一段話） ----------
+# ---------- Analysis (detailed paragraph) ----------
 
 def _results_text(results: list[dict]) -> str:
     lines = []
@@ -188,21 +188,21 @@ def _results_text(results: list[dict]) -> str:
 
 
 def generate_analysis(results: list[dict]) -> str:
-    """非串流：產生詳細分析文字。"""
+    """Non-streaming: produce the detailed analysis text."""
     user = ANALYSIS_USER.format(results=_results_text(results))
     return llm.chat(ANALYSIS_SYSTEM, user).strip()
 
 
 def generate_analysis_stream(results: list[dict]):
-    """串流版：yield 分析文字片段。"""
+    """Streaming variant: yields analysis text chunks."""
     user = ANALYSIS_USER.format(results=_results_text(results))
     yield from llm.chat_stream(ANALYSIS_SYSTEM, user)
 
 
-# ---------- 對外入口 ----------
+# ---------- Public entry points ----------
 
 def analyze(resume_text: str, jd_text: str) -> dict:
-    """非串流完整流程。"""
+    """Non-streaming full pipeline."""
     requirements = decompose_jd(jd_text)
     if not requirements:
         return {"error": "無法從 JD 拆解出要求", "requirements": []}
@@ -219,7 +219,7 @@ def analyze(resume_text: str, jd_text: str) -> dict:
 
 
 def analyze_stream(resume_text: str, jd_text: str):
-    """串流完整流程：yield 事件 dict（type: stage / chunk / result / error）。"""
+    """Streaming full pipeline: yields event dicts (type: stage / chunk / result / error)."""
     yield {"type": "stage", "message": "拆解 JD…"}
     requirements = decompose_jd(jd_text)
     if not requirements:

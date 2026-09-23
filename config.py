@@ -1,9 +1,9 @@
-"""集中設定：模型名稱、閾值、路徑。"""
+"""Central settings: model names, paths."""
 import os
 
 
 def _load_dotenv() -> None:
-    """若專案根目錄有 .env，載入其變數（不覆蓋已存在的環境變數）。"""
+    """Load a .env file from the project root (does not override existing env vars)."""
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(path):
         return
@@ -18,15 +18,15 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-# DeepSeek（OpenAI 相容 API）
+# DeepSeek (OpenAI-compatible API)
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
 DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-flash"  # 便宜、快；要更強可換 "deepseek-v4-pro"
+DEEPSEEK_MODEL = "deepseek-flash"  # cheap & fast; switch to "deepseek-v4-pro" for stronger reasoning
 
-# 本機 Embedding（多語言：繁體中文 + 英文）
-# 預設用 MiniLM：體積小、CPU 友善、速度比 BGE-M3 快很多；
-# 要更高檢索品質可換回 "BAAI/bge-m3"（但 CPU 會慢 5~10 倍）
+# Local embeddings (multilingual: Traditional Chinese + English)
+# MiniLM by default: small, CPU-friendly, much faster than BGE-M3;
+# switch back to "BAAI/bge-m3" for higher retrieval quality (but ~5-10x slower on CPU)
 EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-# 每個要求檢索前幾段履歷當證據（供 LLM 判斷 + 引用原文）
+# Number of resume chunks to retrieve per requirement (used as evidence for the LLM)
 TOP_K = 3

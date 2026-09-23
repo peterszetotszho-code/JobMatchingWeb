@@ -1,4 +1,4 @@
-"""從上傳的檔案抽取文字（PDF / DOCX / 純文字）。"""
+"""Extract text from uploaded files (PDF / DOCX / plain text)."""
 from __future__ import annotations
 
 import io
@@ -8,7 +8,7 @@ import docx
 
 
 def extract_bytes(data: bytes, filename: str) -> str:
-    """從 bytes 抽取文字（供 FastAPI 上傳檔案用）。"""
+    """Extract text from bytes (used by the FastAPI upload endpoint)."""
     name = filename.lower()
     if name.endswith(".pdf"):
         return _pdf(io.BytesIO(data))
@@ -18,7 +18,7 @@ def extract_bytes(data: bytes, filename: str) -> str:
 
 
 def extract_text(file) -> str:
-    """從 Streamlit 上傳物件抽取文字（保留給 app.py 舊版）。"""
+    """Extract text from a Streamlit upload object (kept for the legacy app.py)."""
     return extract_bytes(file.getvalue(), file.name)
 
 

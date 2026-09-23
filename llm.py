@@ -21,7 +21,11 @@ def get_client() -> OpenAI:
 
 
 def chat_json(system: str, user: str, temperature: float = 0.0) -> dict:
-    """呼叫 LLM，回傳解析後的 JSON dict。"""
+    """呼叫 LLM，回傳解析後的 JSON dict。
+
+    - thinking=disabled：deepseek-flash 是推理型模型，關掉思考後快約 3 倍、也更省 token。
+    - 不用 response_format=json_object（有額外延遲），改由 _parse_json 手動抽取 JSON。
+    """
     resp = get_client().chat.completions.create(
         model=config.DEEPSEEK_MODEL,
         messages=[
@@ -29,7 +33,7 @@ def chat_json(system: str, user: str, temperature: float = 0.0) -> dict:
             {"role": "user", "content": user},
         ],
         temperature=temperature,
-        response_format={"type": "json_object"},
+        extra_body={"thinking": {"type": "disabled"}},
     )
     return _parse_json(resp.choices[0].message.content)
 

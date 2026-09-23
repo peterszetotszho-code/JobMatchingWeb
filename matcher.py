@@ -28,7 +28,7 @@ JUDGE_SYSTEM = """你是招聘顧問。以下會列出多條「職位要求」�
 - partial：部分相關、或相關但不足
 - gap：履歷證據無法支持該要求（含完全沒提到）
 
-每條都要給 verdict 與 reason；reason 用一句話，盡量引用履歷原文作為證據。
+每條都要給 verdict 與 reason；reason 用一句話（最多 15 字），盡量引用履歷原文作為證據。
 
 只輸出 JSON，不要輸出其他文字。"""
 
@@ -46,7 +46,12 @@ def decompose_jd(jd_text: str) -> list[dict]:
     """用 LLM 把 JD 拆成原子要求。"""
     user = DECOMPOSE_USER.format(jd=jd_text)
     data = llm.chat_json(DECOMPOSE_SYSTEM, user)
-    raw = data.get("requirements") or data.get("items") or []
+    if isinstance(data, list):
+        raw = data
+    elif isinstance(data, dict):
+        raw = data.get("requirements") or data.get("items") or []
+    else:
+        raw = []
     return [_normalize_requirement(item, i + 1) for i, item in enumerate(raw)]
 
 
@@ -139,8 +144,14 @@ def _judge_all(requirements: list[dict], evidence_map: dict) -> dict:
             lines.append(f"   證據：- {e}")
 
     data = llm.chat_json(JUDGE_SYSTEM, JUDGE_USER.format(items="\n".join(lines)))
+    if isinstance(data, list):
+        raw_judgments = data
+    elif isinstance(data, dict):
+        raw_judgments = data.get("judgments") or []
+    else:
+        raw_judgments = []
     judgments = {}
-    for j in data.get("judgments", []):
+    for j in raw_judgments:
         try:
             jid = int(j.get("id", -1))
         except (TypeError, ValueError):

@@ -24,8 +24,9 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEEPSEEK_MODEL = "deepseek-flash"  # 便宜、快；要更強可換 "deepseek-v4-pro"
 
 # 本機 Embedding（多語言：繁體中文 + 英文）
-# 較小替代：BAAI/bge-small-zh-v1.5（以中文為主）、intfloat/multilingual-e5-small
-EMBEDDING_MODEL = "BAAI/bge-m3"
+# 預設用 MiniLM：體積小、CPU 友善、速度比 BGE-M3 快很多；
+# 要更高檢索品質可換回 "BAAI/bge-m3"（但 CPU 會慢 5~10 倍）
+EMBEDDING_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 # 每個要求檢索前幾段履歷當證據（供 LLM 判斷 + 引用原文）
 TOP_K = 3

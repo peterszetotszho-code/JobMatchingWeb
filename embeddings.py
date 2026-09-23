@@ -21,3 +21,8 @@ def get_model():
 def embed(texts: list[str]) -> np.ndarray:
     """回傳正規化後的向量，cosine similarity = 內積。"""
     return get_model().encode(texts, normalize_embeddings=True, show_progress_bar=False)
+
+
+def warmup() -> None:
+    """預先載入模型並做一次前向，把冷啟動延遲移到 app 啟動時。"""
+    get_model().encode(["warmup"], normalize_embeddings=True, show_progress_bar=False)

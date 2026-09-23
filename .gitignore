@@ -5,6 +5,10 @@ __pycache__/
 .venv/
 venv/
 
+# Node / frontend
+frontend/node_modules/
+frontend/dist/
+
 # Env / secrets
 .env
 

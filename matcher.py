@@ -1,4 +1,4 @@
-"""核心邏輯：JD 拆解 → 逐條檢索證據 → LLM 逐條判斷 → 確定性打分。"""
+"""核心邏輯：JD 拆解 → 檢索證據 → 判斷 → 打分 + 詳細分析。"""
 from __future__ import annotations
 
 import numpy as np
@@ -30,8 +30,6 @@ JUDGE_SYSTEM = """你是招聘顧問。以下會列出多條「職位要求」�
 
 每條都要給 verdict 與 reason；reason 用一句話（最多 15 字），盡量引用履歷原文作為證據。
 
-另外輸出 analysis：用自然流暢的中文寫一段**至少 300 字**的詳細分析，具體說明候選人符合了哪些要求（舉出對應技能或經驗）、哪些只部分符合、哪些明顯欠缺，並簡要解釋原因；內容要具體充實、避免空洞。
-
 只輸出 JSON，不要輸出其他文字。"""
 
 JUDGE_USER = """職位要求與檢索到的履歷證據：
@@ -39,7 +37,14 @@ JUDGE_USER = """職位要求與檢索到的履歷證據：
 {items}
 
 請輸出 JSON（verdict 只能是 matched / partial / gap 三者之一）：
-{{"analysis": "詳細分析（至少 300 字）", "judgments": [{{"id": 1, "verdict": "matched", "reason": "一句話說明"}}]}}"""
+{{"judgments": [{{"id": 1, "verdict": "matched", "reason": "一句話說明"}}]}}"""
+
+ANALYSIS_SYSTEM = """你是招聘顧問。請根據下面的逐條判斷結果，寫一段自然流暢的中文詳細分析。"""
+
+ANALYSIS_USER = """逐條判斷結果：
+{results}
+
+請寫一段**至少 300 字**的詳細分析，具體說明候選人符合了哪些要求（舉出對應技能或經驗）、哪些只部分符合、哪些明顯欠缺，並簡要解釋原因；內容要具體充實、避免空洞。只輸出分析文字，不要其他。"""
 
 
 # ---------- 資料處理 ----------
@@ -86,33 +91,58 @@ def chunk_resume(text: str) -> list[dict]:
     return chunks
 
 
-def analyze(resume_text: str, jd_text: str) -> dict:
-    """完整流程：拆解 JD → 檢索證據 → LLM 逐條判斷 → 確定性打分。"""
-    requirements = decompose_jd(jd_text)
-    if not requirements:
-        return {"error": "無法從 JD 拆解出要求", "requirements": []}
+# ---------- 檢索 ----------
 
-    resume_chunks = chunk_resume(resume_text)
-    if not resume_chunks:
-        return {"error": "履歷為空", "requirements": []}
-
+def _retrieve(requirements: list[dict], chunks: list[dict]) -> tuple[dict, dict]:
+    """對每條要求檢索 top-k 履歷片段，回傳 (evidence_map, best_sim_map)。"""
     req_texts = [r["requirement"] for r in requirements]
-    chunk_texts = [c["text"] for c in resume_chunks]
+    chunk_texts = [c["text"] for c in chunks]
+    req_vecs = embeddings.embed(req_texts)
+    chunk_vecs = embeddings.embed(chunk_texts)
+    sim = req_vecs @ chunk_vecs.T
 
-    req_vecs = embeddings.embed(req_texts)          # (n_req, dim)
-    chunk_vecs = embeddings.embed(chunk_texts)      # (n_chunk, dim)
-    sim = req_vecs @ chunk_vecs.T                   # (n_req, n_chunk) = cosine
-
-    # 每條要求檢索 top-k 履歷片段作為證據（供 LLM 判斷 + 引用）
     evidence_map = {}
     best_sim_map = {}
     for i in range(len(requirements)):
         order = np.argsort(sim[i])[::-1][: config.TOP_K]
-        evidence_map[i] = [resume_chunks[j]["text"] for j in order]
+        evidence_map[i] = [chunks[j]["text"] for j in order]
         best_sim_map[i] = float(sim[i][order[0]])
+    return evidence_map, best_sim_map
 
-    judgments, analysis = _judge_all(requirements, evidence_map)
 
+# ---------- 判斷 ----------
+
+def _judge_all(requirements: list[dict], evidence_map: dict) -> dict:
+    """一次 LLM 呼叫判斷所有要求，回傳 {id: {verdict, reason}}。"""
+    lines = []
+    for i, req in enumerate(requirements):
+        rid = req.get("id", i + 1)
+        lines.append(f"{rid}. [{req.get('category', 'other')}] {req['requirement']}")
+        for e in evidence_map[i]:
+            lines.append(f"   證據：- {e}")
+
+    data = llm.chat_json(JUDGE_SYSTEM, JUDGE_USER.format(items="\n".join(lines)))
+    if isinstance(data, dict):
+        raw_judgments = data.get("judgments") or []
+    elif isinstance(data, list):
+        raw_judgments = data
+    else:
+        raw_judgments = []
+
+    judgments = {}
+    for j in raw_judgments:
+        try:
+            jid = int(j.get("id", -1))
+        except (TypeError, ValueError):
+            continue
+        verdict = j.get("verdict", "partial")
+        if verdict not in ("matched", "partial", "gap"):
+            verdict = "partial"
+        judgments[jid] = {"verdict": verdict, "reason": j.get("reason", "")}
+    return judgments
+
+
+def _build_results(requirements, judgments, evidence_map, best_sim_map) -> list[dict]:
     results = []
     for i, req in enumerate(requirements):
         rid = req.get("id", i + 1)
@@ -126,7 +156,18 @@ def analyze(resume_text: str, jd_text: str) -> dict:
             "evidence": evidence_map[i],
             "score": round(best_sim_map[i], 4),
         })
+    return results
 
+
+def _compute_score(results: list[dict]) -> int:
+    weights = {"matched": 1.0, "partial": 0.5, "gap": 0.0}
+    if not results:
+        return 0
+    total = sum(weights[r["verdict"]] for r in results)
+    return round(100 * total / len(results))
+
+
+def _summarize(results: list[dict], analysis: str) -> dict:
     return {
         "fit_score": _compute_score(results),
         "analysis": analysis,
@@ -137,43 +178,70 @@ def analyze(resume_text: str, jd_text: str) -> dict:
     }
 
 
-def _judge_all(requirements: list[dict], evidence_map: dict) -> tuple[dict, str]:
-    """一次 LLM 呼叫判斷所有要求，並回傳 (judgments, analysis)。"""
+# ---------- 分析（詳細一段話） ----------
+
+def _results_text(results: list[dict]) -> str:
     lines = []
-    for i, req in enumerate(requirements):
-        rid = req.get("id", i + 1)
-        lines.append(f"{rid}. [{req.get('category', 'other')}] {req['requirement']}")
-        for e in evidence_map[i]:
-            lines.append(f"   證據：- {e}")
-
-    data = llm.chat_json(JUDGE_SYSTEM, JUDGE_USER.format(items="\n".join(lines)))
-    if isinstance(data, dict):
-        analysis = data.get("analysis", "")
-        raw_judgments = data.get("judgments") or []
-    elif isinstance(data, list):
-        analysis = ""
-        raw_judgments = data
-    else:
-        analysis = ""
-        raw_judgments = []
-
-    judgments = {}
-    for j in raw_judgments:
-        try:
-            jid = int(j.get("id", -1))
-        except (TypeError, ValueError):
-            continue
-        verdict = j.get("verdict", "partial")
-        if verdict not in ("matched", "partial", "gap"):
-            verdict = "partial"
-        judgments[jid] = {"verdict": verdict, "reason": j.get("reason", "")}
-    return judgments, analysis
+    for r in results:
+        lines.append(f"[{r['verdict']}] ({r['category']}) {r['requirement']}｜{r['reason']}")
+    return "\n".join(lines)
 
 
-def _compute_score(results: list[dict]) -> int:
-    """以確定性方式算 0–100 分（不直接問 LLM 要數字，避免不可重現）。"""
-    weights = {"matched": 1.0, "partial": 0.5, "gap": 0.0}
-    if not results:
-        return 0
-    total = sum(weights[r["verdict"]] for r in results)
-    return round(100 * total / len(results))
+def generate_analysis(results: list[dict]) -> str:
+    """非串流：產生詳細分析文字。"""
+    user = ANALYSIS_USER.format(results=_results_text(results))
+    return llm.chat(ANALYSIS_SYSTEM, user).strip()
+
+
+def generate_analysis_stream(results: list[dict]):
+    """串流版：yield 分析文字片段。"""
+    user = ANALYSIS_USER.format(results=_results_text(results))
+    yield from llm.chat_stream(ANALYSIS_SYSTEM, user)
+
+
+# ---------- 對外入口 ----------
+
+def analyze(resume_text: str, jd_text: str) -> dict:
+    """非串流完整流程。"""
+    requirements = decompose_jd(jd_text)
+    if not requirements:
+        return {"error": "無法從 JD 拆解出要求", "requirements": []}
+
+    chunks = chunk_resume(resume_text)
+    if not chunks:
+        return {"error": "履歷為空", "requirements": []}
+
+    evidence_map, best_sim_map = _retrieve(requirements, chunks)
+    judgments = _judge_all(requirements, evidence_map)
+    results = _build_results(requirements, judgments, evidence_map, best_sim_map)
+    analysis = generate_analysis(results)
+    return _summarize(results, analysis)
+
+
+def analyze_stream(resume_text: str, jd_text: str):
+    """串流完整流程：yield 事件 dict（type: stage / chunk / result / error）。"""
+    yield {"type": "stage", "message": "拆解 JD…"}
+    requirements = decompose_jd(jd_text)
+    if not requirements:
+        yield {"type": "error", "message": "無法從 JD 拆解出要求"}
+        return
+
+    yield {"type": "stage", "message": "切分並檢索履歷證據…"}
+    chunks = chunk_resume(resume_text)
+    if not chunks:
+        yield {"type": "error", "message": "履歷為空"}
+        return
+
+    evidence_map, best_sim_map = _retrieve(requirements, chunks)
+
+    yield {"type": "stage", "message": "判斷每條要求…"}
+    judgments = _judge_all(requirements, evidence_map)
+    results = _build_results(requirements, judgments, evidence_map, best_sim_map)
+
+    yield {"type": "stage", "message": "生成分析…"}
+    parts = []
+    for chunk in generate_analysis_stream(results):
+        parts.append(chunk)
+        yield {"type": "chunk", "text": chunk}
+
+    yield {"type": "result", "data": _summarize(results, "".join(parts))}

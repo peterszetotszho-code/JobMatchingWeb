@@ -9,6 +9,9 @@ import config
 
 _client: OpenAI | None = None
 
+# deepseek-flash 是推理型模型，關掉思考後快約 3 倍、也更省 token
+_THINKING = {"thinking": {"type": "disabled"}}
+
 
 def get_client() -> OpenAI:
     global _client
@@ -20,25 +23,47 @@ def get_client() -> OpenAI:
     return _client
 
 
-def chat_json(system: str, user: str, temperature: float = 0.0) -> dict:
-    """呼叫 LLM，回傳解析後的 JSON dict。
+def _messages(system: str, user: str) -> list[dict]:
+    return [
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
+    ]
 
-    - thinking=disabled：deepseek-flash 是推理型模型，關掉思考後快約 3 倍、也更省 token。
-    - 不用 response_format=json_object（有額外延遲），改由 _parse_json 手動抽取 JSON。
-    """
+
+def chat(system: str, user: str, temperature: float = 0.0) -> str:
+    """呼叫 LLM，回傳純文字內容。"""
     resp = get_client().chat.completions.create(
         model=config.DEEPSEEK_MODEL,
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
+        messages=_messages(system, user),
         temperature=temperature,
-        extra_body={"thinking": {"type": "disabled"}},
+        extra_body=_THINKING,
     )
-    return _parse_json(resp.choices[0].message.content)
+    return resp.choices[0].message.content or ""
 
 
-def _parse_json(content: str) -> dict:
+def chat_stream(system: str, user: str, temperature: float = 0.0):
+    """串流版：yield 文字片段。"""
+    resp = get_client().chat.completions.create(
+        model=config.DEEPSEEK_MODEL,
+        messages=_messages(system, user),
+        temperature=temperature,
+        stream=True,
+        extra_body=_THINKING,
+    )
+    for chunk in resp:
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
+def chat_json(system: str, user: str, temperature: float = 0.0):
+    """呼叫 LLM，回傳解析後的 JSON（dict 或 list）。
+
+    刻意不用 response_format=json_object（有額外延遲），改由 _parse_json 手動抽取。
+    """
+    return _parse_json(chat(system, user, temperature))
+
+
+def _parse_json(content: str):
     try:
         return json.loads(content)
     except json.JSONDecodeError:

@@ -15,10 +15,12 @@ import chat
 import embeddings
 import matcher
 import resume_io
+import store
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    store.init()
     embeddings.warmup()  # preload the embedding model at startup to avoid cold start on first analysis
     yield
 
@@ -99,6 +101,64 @@ def ask_stream(req: AskRequest) -> StreamingResponse:
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# ---------- Match history (per-user records) ----------
+
+class SaveRecordRequest(BaseModel):
+    user_id: str
+    resume: str
+    jd: str
+    analysis: str
+    fit_score: int
+    matched: int
+    partial: int
+    gap: int
+
+
+class AddMessageRequest(BaseModel):
+    user_id: str
+    role: str
+    content: str
+
+
+@app.post("/api/records")
+def save_record(req: SaveRecordRequest) -> dict:
+    """Save a completed analysis as a history record."""
+    rid = store.save_record(
+        req.user_id, req.resume, req.jd, req.analysis,
+        req.fit_score, req.matched, req.partial, req.gap,
+    )
+    return {"record_id": rid}
+
+
+@app.get("/api/records")
+def list_records(user_id: str) -> dict:
+    """List a user's history records (newest first, no heavy fields)."""
+    return {"records": store.list_records(user_id)}
+
+
+@app.get("/api/records/{record_id}")
+def get_record(record_id: int, user_id: str) -> dict:
+    """Get a full record (with messages) if it belongs to the user."""
+    rec = store.get_record(user_id, record_id)
+    if rec is None:
+        return {"error": "record not found"}
+    return rec
+
+
+@app.delete("/api/records/{record_id}")
+def delete_record(record_id: int, user_id: str) -> dict:
+    """Delete a record (and its messages) if it belongs to the user."""
+    return {"deleted": store.delete_record(user_id, record_id)}
+
+
+@app.post("/api/records/{record_id}/messages")
+def add_message(record_id: int, req: AddMessageRequest) -> dict:
+    """Append a chat message to a record (ownership-checked)."""
+    if store.get_record(req.user_id, record_id) is None:
+        return {"error": "record not found"}
+    return {"message_id": store.add_message(record_id, req.role, req.content)}
 
 
 # Serve the built React frontend (if present) so a single server hosts the whole site.

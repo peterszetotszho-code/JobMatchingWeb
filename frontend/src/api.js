@@ -55,3 +55,46 @@ export async function askStream(payload, handlers) {
   if (!resp.ok) throw new Error(`請求失敗 (${resp.status})`);
   await readSSE(resp, handlers);
 }
+
+// ---- match history ----
+
+export async function saveRecord(payload) {
+  const resp = await fetch(`${BASE}/records`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(`儲存失敗 (${resp.status})`);
+  return resp.json();
+}
+
+export async function listRecords(userId) {
+  const resp = await fetch(`${BASE}/records?user_id=${encodeURIComponent(userId)}`);
+  if (!resp.ok) throw new Error(`讀取失敗 (${resp.status})`);
+  const data = await resp.json();
+  return data.records || [];
+}
+
+export async function getRecord(userId, id) {
+  const resp = await fetch(`${BASE}/records/${id}?user_id=${encodeURIComponent(userId)}`);
+  if (!resp.ok) throw new Error(`讀取失敗 (${resp.status})`);
+  return resp.json();
+}
+
+export async function deleteRecord(userId, id) {
+  const resp = await fetch(`${BASE}/records/${id}?user_id=${encodeURIComponent(userId)}`, {
+    method: 'DELETE',
+  });
+  if (!resp.ok) throw new Error(`刪除失敗 (${resp.status})`);
+  return resp.json();
+}
+
+export async function addMessage(userId, recordId, role, content) {
+  const resp = await fetch(`${BASE}/records/${recordId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, role, content }),
+  });
+  if (!resp.ok) throw new Error(`儲存訊息失敗 (${resp.status})`);
+  return resp.json();
+}

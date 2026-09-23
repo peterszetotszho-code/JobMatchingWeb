@@ -1,5 +1,18 @@
-import { useRef, useState } from 'react';
-import { parseFile, analyzeStream, askStream } from './api.js';
+import { useEffect, useRef, useState } from 'react';
+import {
+  parseFile, analyzeStream, askStream,
+  saveRecord, listRecords, getRecord, deleteRecord, addMessage,
+} from './api.js';
+
+function getUserId() {
+  let id = localStorage.getItem('jobfit_user_id');
+  if (!id) {
+    id = (crypto.randomUUID && crypto.randomUUID())
+      || 'u_' + Date.now() + '_' + Math.random().toString(36).slice(2, 10);
+    localStorage.setItem('jobfit_user_id', id);
+  }
+  return id;
+}
 
 function TextPanel({ title, value, onChange, onUpload, placeholder }) {
   return (
@@ -8,11 +21,7 @@ function TextPanel({ title, value, onChange, onUpload, placeholder }) {
         <h2>{title}</h2>
         <button className="ghost" onClick={onUpload}>📎 上傳檔案</button>
       </div>
-      <textarea
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-      />
+      <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
     </div>
   );
 }
@@ -27,6 +36,8 @@ function Metric({ num, label, color }) {
 }
 
 export default function App() {
+  const userId = getUserId();
+
   const [resume, setResume] = useState('');
   const [jd, setJd] = useState('');
   const [loading, setLoading] = useState(false);
@@ -34,6 +45,12 @@ export default function App() {
   const [analysis, setAnalysis] = useState('');
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+
+  // chat context = the resume/jd/analysis of the currently-open analysis or record
+  const [session, setSession] = useState({ resume: '', jd: '' });
+
+  const [records, setRecords] = useState([]);
+  const [currentRecordId, setCurrentRecordId] = useState(null);
 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -43,6 +60,12 @@ export default function App() {
 
   const resumeFileRef = useRef(null);
   const jdFileRef = useRef(null);
+
+  useEffect(() => { refreshRecords(); }, []);
+
+  async function refreshRecords() {
+    try { setRecords(await listRecords(userId)); } catch { /* ignore */ }
+  }
 
   async function handleUpload(file, setText) {
     if (!file) return;
@@ -63,11 +86,30 @@ export default function App() {
     setAnalysis('');
     setResult(null);
     setMessages([]);
+    setCurrentRecordId(null);
     try {
       await analyzeStream(resume, jd, {
         onStage: setStage,
         onChunk: (t) => setAnalysis((prev) => prev + t),
-        onResult: setResult,
+        onResult: async (data) => {
+          setResult(data);
+          setAnalysis(data.analysis || '');
+          setSession({ resume, jd });
+          try {
+            const saved = await saveRecord({
+              user_id: userId,
+              resume,
+              jd,
+              analysis: data.analysis || '',
+              fit_score: data.fit_score,
+              matched: data.matched,
+              partial: data.partial,
+              gap: data.gap,
+            });
+            setCurrentRecordId(saved.record_id);
+          } catch { /* ignore save errors */ }
+          refreshRecords();
+        },
         onError: (m) => setError(m),
       });
     } catch (e) {
@@ -77,27 +119,75 @@ export default function App() {
     }
   }
 
+  async function openRecord(id) {
+    try {
+      const rec = await getRecord(userId, id);
+      if (rec.error) { setError(rec.error); return; }
+      setCurrentRecordId(id);
+      setResult({ fit_score: rec.fit_score, matched: rec.matched, partial: rec.partial, gap: rec.gap });
+      setAnalysis(rec.analysis);
+      setSession({ resume: rec.resume, jd: rec.jd });
+      setMessages(rec.messages || []);
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function loadRecordToInputs(id) {
+    try {
+      const rec = await getRecord(userId, id);
+      if (rec.error) { setError(rec.error); return; }
+      setResume(rec.resume);
+      setJd(rec.jd);
+      setError('');
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function handleDelete(id) {
+    try {
+      await deleteRecord(userId, id);
+      if (currentRecordId === id) {
+        setCurrentRecordId(null);
+        setResult(null);
+        setAnalysis('');
+        setMessages([]);
+        setSession({ resume: '', jd: '' });
+      }
+      refreshRecords();
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
   async function sendMessage() {
     const q = input.trim();
-    if (!q || chatLoading) return;
+    if (!q || chatLoading || !result) return;
     setInput('');
     setMessages((m) => [...m, { role: 'user', content: q }]);
     setChatLoading(true);
     setChatDraft('');
     setChatStage('');
     let answerText = '';
-    let sources = [];
     try {
+      if (currentRecordId) {
+        await addMessage(userId, currentRecordId, 'user', q).catch(() => {});
+      }
       await askStream(
-        { question: q, resume, jd, analysis },
+        { question: q, resume: session.resume, jd: session.jd, analysis },
         {
           onStage: setChatStage,
           onChunk: (t) => { answerText += t; setChatDraft((p) => p + t); },
-          onResult: (data) => { sources = data.web_sources || []; },
+          onResult: () => {},
           onError: (m) => { answerText += `\n⚠️ ${m}`; },
         },
       );
-      setMessages((m) => [...m, { role: 'assistant', content: answerText, sources }]);
+      setMessages((m) => [...m, { role: 'assistant', content: answerText }]);
+      if (currentRecordId) {
+        await addMessage(userId, currentRecordId, 'assistant', answerText).catch(() => {});
+      }
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', content: '⚠️ ' + e.message }]);
     } finally {
@@ -112,15 +202,33 @@ export default function App() {
       <header>
         <h1>💼 求職助手 Job Fit Assistant</h1>
         <p>上傳履歷，貼上 JobsDB 職位描述，比對符合度；分析後還可追問、聯網查公司資訊。</p>
-        <a
-          className="repo-link"
-          href="https://github.com/peterszetotszho-code/JobMatchingWeb"
-          target="_blank"
-          rel="noreferrer"
-        >
+        <a className="repo-link" href="https://github.com/peterszetotszho-code/JobMatchingWeb" target="_blank" rel="noreferrer">
           ⭐ View on GitHub
         </a>
       </header>
+
+      {records.length > 0 && (
+        <div className="history">
+          <h3>📂 歷史記錄 History</h3>
+          <div className="history-list">
+            {records.map((r) => (
+              <div key={r.id} className={`history-item ${r.id === currentRecordId ? 'active' : ''}`}>
+                <div className="history-main">
+                  <div className="history-title">{r.title}</div>
+                  <div className="history-meta">
+                    {r.fit_score}% 符合度 · {new Date(r.created_at).toLocaleString()}
+                  </div>
+                </div>
+                <div className="history-actions">
+                  <button className="ghost" onClick={() => openRecord(r.id)}>💬 繼續</button>
+                  <button className="ghost" onClick={() => loadRecordToInputs(r.id)}>📋 載入輸入</button>
+                  <button className="ghost danger" onClick={() => handleDelete(r.id)}>🗑 刪除</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid">
         <TextPanel

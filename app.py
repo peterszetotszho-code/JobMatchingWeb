@@ -14,13 +14,6 @@ st.set_page_config(page_title="求職助手 Job Fit Assistant", page_icon="💼"
 
 # ---------- 函式定義（放在使用之前，避免 NameError） ----------
 
-VERDICT_META = {
-    "matched": "✅ 匹配 Matched",
-    "partial": "⚠️ 部分 Partial",
-    "gap": "❌ 缺口 Gap",
-}
-
-
 @st.cache_resource(show_spinner="正在載入模型 Loading model…（首次較慢）")
 def _warmup() -> bool:
     embeddings.warmup()
@@ -42,16 +35,8 @@ def _render_result(result: dict) -> None:
     c4.metric("缺口 Gap", result["gap"])
     st.progress(result["fit_score"] / 100)
 
-    st.subheader("📝 總結 Summary")
-    st.write(result.get("summary", ""))
-
-    with st.expander("📎 逐條細節與證據（點開查看）"):
-        for r in result["requirements"]:
-            label = VERDICT_META.get(r["verdict"], "?")
-            st.markdown(f"**{label}** ｜ {r['requirement']}")
-            st.markdown(f"- {r['reason']}")
-            for e in r["evidence"]:
-                st.markdown(f"  · 證據：{e}")
+    st.subheader("📊 分析結果 Analysis")
+    st.write(result.get("analysis", ""))
 
 
 # ---------- 啟動時預先載入模型 ----------

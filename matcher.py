@@ -30,7 +30,7 @@ JUDGE_SYSTEM = """你是招聘顧問。以下會列出多條「職位要求」�
 
 每條都要給 verdict 與 reason；reason 用一句話（最多 15 字），盡量引用履歷原文作為證據。
 
-另外輸出 summary：用自然流暢的中文（約 80～120 字）總結候選人的整體符合情況，點出哪些方面符合、部分符合、欠缺；不要逐條列點，要一段話。
+另外輸出 analysis：用自然流暢的中文寫一段**至少 300 字**的詳細分析，具體說明候選人符合了哪些要求（舉出對應技能或經驗）、哪些只部分符合、哪些明顯欠缺，並簡要解釋原因；內容要具體充實、避免空洞。
 
 只輸出 JSON，不要輸出其他文字。"""
 
@@ -39,7 +39,7 @@ JUDGE_USER = """職位要求與檢索到的履歷證據：
 {items}
 
 請輸出 JSON（verdict 只能是 matched / partial / gap 三者之一）：
-{{"summary": "一段話總結", "judgments": [{{"id": 1, "verdict": "matched", "reason": "一句話說明"}}]}}"""
+{{"analysis": "詳細分析（至少 300 字）", "judgments": [{{"id": 1, "verdict": "matched", "reason": "一句話說明"}}]}}"""
 
 
 # ---------- 資料處理 ----------
@@ -111,7 +111,7 @@ def analyze(resume_text: str, jd_text: str) -> dict:
         evidence_map[i] = [resume_chunks[j]["text"] for j in order]
         best_sim_map[i] = float(sim[i][order[0]])
 
-    judgments, summary = _judge_all(requirements, evidence_map)
+    judgments, analysis = _judge_all(requirements, evidence_map)
 
     results = []
     for i, req in enumerate(requirements):
@@ -129,7 +129,7 @@ def analyze(resume_text: str, jd_text: str) -> dict:
 
     return {
         "fit_score": _compute_score(results),
-        "summary": summary,
+        "analysis": analysis,
         "requirements": results,
         "matched": sum(1 for r in results if r["verdict"] == "matched"),
         "partial": sum(1 for r in results if r["verdict"] == "partial"),
@@ -138,7 +138,7 @@ def analyze(resume_text: str, jd_text: str) -> dict:
 
 
 def _judge_all(requirements: list[dict], evidence_map: dict) -> tuple[dict, str]:
-    """一次 LLM 呼叫判斷所有要求，並回傳 (judgments, summary)。"""
+    """一次 LLM 呼叫判斷所有要求，並回傳 (judgments, analysis)。"""
     lines = []
     for i, req in enumerate(requirements):
         rid = req.get("id", i + 1)
@@ -148,13 +148,13 @@ def _judge_all(requirements: list[dict], evidence_map: dict) -> tuple[dict, str]
 
     data = llm.chat_json(JUDGE_SYSTEM, JUDGE_USER.format(items="\n".join(lines)))
     if isinstance(data, dict):
-        summary = data.get("summary", "")
+        analysis = data.get("analysis", "")
         raw_judgments = data.get("judgments") or []
     elif isinstance(data, list):
-        summary = ""
+        analysis = ""
         raw_judgments = data
     else:
-        summary = ""
+        analysis = ""
         raw_judgments = []
 
     judgments = {}
@@ -167,7 +167,7 @@ def _judge_all(requirements: list[dict], evidence_map: dict) -> tuple[dict, str]
         if verdict not in ("matched", "partial", "gap"):
             verdict = "partial"
         judgments[jid] = {"verdict": verdict, "reason": j.get("reason", "")}
-    return judgments, summary
+    return judgments, analysis
 
 
 def _compute_score(results: list[dict]) -> int:

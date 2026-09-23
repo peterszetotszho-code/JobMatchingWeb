@@ -112,6 +112,14 @@ export default function App() {
       <header>
         <h1>💼 求職助手 Job Fit Assistant</h1>
         <p>上傳履歷，貼上 JobsDB 職位描述，比對符合度；分析後還可追問、聯網查公司資訊。</p>
+        <a
+          className="repo-link"
+          href="https://github.com/peterszetotszho-code/JobMatchingWeb"
+          target="_blank"
+          rel="noreferrer"
+        >
+          ⭐ View on GitHub
+        </a>
       </header>
 
       <div className="grid">

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { parseFile, analyzeStream } from './api.js';
+import { parseFile, analyzeStream, askStream } from './api.js';
 
 function TextPanel({ title, value, onChange, onUpload, placeholder }) {
   return (
@@ -35,6 +35,12 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatDraft, setChatDraft] = useState('');
+  const [chatStage, setChatStage] = useState('');
+
   const resumeFileRef = useRef(null);
   const jdFileRef = useRef(null);
 
@@ -56,6 +62,7 @@ export default function App() {
     setStage('');
     setAnalysis('');
     setResult(null);
+    setMessages([]);
     try {
       await analyzeStream(resume, jd, {
         onStage: setStage,
@@ -70,11 +77,41 @@ export default function App() {
     }
   }
 
+  async function sendMessage() {
+    const q = input.trim();
+    if (!q || chatLoading) return;
+    setInput('');
+    setMessages((m) => [...m, { role: 'user', content: q }]);
+    setChatLoading(true);
+    setChatDraft('');
+    setChatStage('');
+    let answerText = '';
+    let sources = [];
+    try {
+      await askStream(
+        { question: q, resume, jd, analysis },
+        {
+          onStage: setChatStage,
+          onChunk: (t) => { answerText += t; setChatDraft((p) => p + t); },
+          onResult: (data) => { sources = data.web_sources || []; },
+          onError: (m) => { answerText += `\n⚠️ ${m}`; },
+        },
+      );
+      setMessages((m) => [...m, { role: 'assistant', content: answerText, sources }]);
+    } catch (e) {
+      setMessages((m) => [...m, { role: 'assistant', content: '⚠️ ' + e.message }]);
+    } finally {
+      setChatLoading(false);
+      setChatDraft('');
+      setChatStage('');
+    }
+  }
+
   return (
     <div className="container">
       <header>
         <h1>💼 求職助手 Job Fit Assistant</h1>
-        <p>上傳履歷，貼上 JobsDB 職位描述，即時比對你的符合度與差距。</p>
+        <p>上傳履歷，貼上 JobsDB 職位描述，比對符合度；分析後還可追問、聯網查公司資訊。</p>
       </header>
 
       <div className="grid">
@@ -94,27 +131,14 @@ export default function App() {
         />
       </div>
 
-      <input
-        ref={resumeFileRef}
-        type="file"
-        accept=".pdf,.docx,.txt,.md"
-        style={{ display: 'none' }}
-        onChange={(e) => handleUpload(e.target.files?.[0], setResume)}
-      />
-      <input
-        ref={jdFileRef}
-        type="file"
-        accept=".pdf,.docx,.txt,.md"
-        style={{ display: 'none' }}
-        onChange={(e) => handleUpload(e.target.files?.[0], setJd)}
-      />
+      <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+        onChange={(e) => handleUpload(e.target.files?.[0], setResume)} />
+      <input ref={jdFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+        onChange={(e) => handleUpload(e.target.files?.[0], setJd)} />
 
       <div className="actions">
-        <button
-          className="primary"
-          onClick={handleAnalyze}
-          disabled={loading || !resume.trim() || !jd.trim()}
-        >
+        <button className="primary" onClick={handleAnalyze}
+          disabled={loading || !resume.trim() || !jd.trim()}>
           {loading ? '分析中…' : '🔍 開始分析 Analyze'}
         </button>
       </div>
@@ -142,6 +166,41 @@ export default function App() {
             {analysis}
             {loading && <span className="cursor">▌</span>}
           </p>
+        </div>
+      )}
+
+      {result && (
+        <div className="chat">
+          <h3>💬 求職追問 Ask Follow-up</h3>
+          <div className="chat-log">
+            {messages.map((m, i) => (
+              <div key={i} className={`msg ${m.role}`}>
+                <div className="msg-content">{m.content}</div>
+                {m.sources?.length > 0 && (
+                  <div className="sources">
+                    {m.sources.map((s, j) => (
+                      <a key={j} href={s.url} target="_blank" rel="noreferrer">🔗 {s.title}</a>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {chatLoading && (
+              <div className="msg assistant">
+                <div className="chat-stage">⏳ {chatStage}</div>
+                <div className="msg-content">{chatDraft}<span className="cursor">▌</span></div>
+              </div>
+            )}
+          </div>
+          <div className="chat-input">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }}
+              placeholder="例如：這間公司是做什麼的？／我該怎麼補強才能提高符合度？"
+            />
+            <button onClick={sendMessage} disabled={chatLoading || !input.trim()}>送出</button>
+          </div>
         </div>
       )}
     </div>

@@ -10,19 +10,11 @@ export async function parseFile(file) {
   return data.text || '';
 }
 
-// 串流分析：解析 SSE，逐字回傳
-export async function analyzeStream(resume, jd, { onStage, onChunk, onResult, onError }) {
-  const resp = await fetch(`${BASE}/analyze/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ resume, jd }),
-  });
-  if (!resp.ok) throw new Error(`請求失敗 (${resp.status})`);
-
+// 解析 SSE 串流
+async function readSSE(resp, { onStage, onChunk, onResult, onError }) {
   const reader = resp.body.getReader();
   const decoder = new TextDecoder('utf-8');
   let buffer = '';
-
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -35,15 +27,31 @@ export async function analyzeStream(resume, jd, { onStage, onChunk, onResult, on
       const payload = line.slice(5).trim();
       if (!payload) continue;
       let event;
-      try {
-        event = JSON.parse(payload);
-      } catch {
-        continue;
-      }
+      try { event = JSON.parse(payload); } catch { continue; }
       if (event.type === 'stage') onStage?.(event.message);
       else if (event.type === 'chunk') onChunk?.(event.text);
       else if (event.type === 'result') onResult?.(event.data);
       else if (event.type === 'error') onError?.(event.message);
     }
   }
+}
+
+export async function analyzeStream(resume, jd, handlers) {
+  const resp = await fetch(`${BASE}/analyze/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ resume, jd }),
+  });
+  if (!resp.ok) throw new Error(`請求失敗 (${resp.status})`);
+  await readSSE(resp, handlers);
+}
+
+export async function askStream(payload, handlers) {
+  const resp = await fetch(`${BASE}/ask/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!resp.ok) throw new Error(`請求失敗 (${resp.status})`);
+  await readSSE(resp, handlers);
 }

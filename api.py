@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+import chat
 import embeddings
 import matcher
 import resume_io
@@ -66,6 +67,33 @@ def analyze_stream(req: AnalyzeRequest) -> StreamingResponse:
     def gen():
         try:
             for event in matcher.analyze_stream(req.resume, req.jd):
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except Exception as exc:  # noqa: BLE001
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+class AskRequest(BaseModel):
+    question: str
+    resume: str
+    jd: str
+    analysis: str
+
+
+@app.post("/api/ask")
+def ask(req: AskRequest) -> dict:
+    """求職追問（非串流）：本地 RAG + 聯網搜尋。"""
+    return chat.ask_question(req.question, req.resume, req.jd, req.analysis)
+
+
+@app.post("/api/ask/stream")
+def ask_stream(req: AskRequest) -> StreamingResponse:
+    """求職追問（串流 SSE）。"""
+
+    def gen():
+        try:
+            for event in chat.ask_question_stream(req.question, req.resume, req.jd, req.analysis):
                 yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         except Exception as exc:  # noqa: BLE001
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)}, ensure_ascii=False)}\n\n"

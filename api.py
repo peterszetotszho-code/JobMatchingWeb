@@ -110,6 +110,7 @@ class SaveRecordRequest(BaseModel):
     resume: str
     jd: str
     analysis: str
+    title: str = ""
     fit_score: int
     matched: int
     partial: int
@@ -127,7 +128,7 @@ def save_record(req: SaveRecordRequest) -> dict:
     """Save a completed analysis as a history record."""
     rid = store.save_record(
         req.user_id, req.resume, req.jd, req.analysis,
-        req.fit_score, req.matched, req.partial, req.gap,
+        req.fit_score, req.matched, req.partial, req.gap, req.title,
     )
     return {"record_id": rid}
 

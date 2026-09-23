@@ -17,7 +17,9 @@ DECOMPOSE_SYSTEM = """你是一位熟悉香港就業市場的招聘顧問。請�
 - 保留原文語言（中英夾雜就照原樣）。
 - category 只能是下列之一：skills(技能)、experience(經驗)、education(學歷)、language(語言)、soft(軟技能/其他)。
 
-只輸出 JSON，不要輸出其他文字。"""
+另外輸出 title：用一句話（15 字內）總結這個職位，例如「AI 工程師」「香港前端工程師」，含公司名更好。
+
+只輸出 JSON，不要輸出其他文字，格式：{"title": "...", "requirements": [{"id":1,"category":"...","requirement":"..."}]}。"""
 
 DECOMPOSE_USER = "職位描述（JD）：\n\n{jd}"
 
@@ -49,17 +51,19 @@ ANALYSIS_USER = """逐條判斷結果：
 
 # ---------- Data processing ----------
 
-def decompose_jd(jd_text: str) -> list[dict]:
-    """Use the LLM to decompose the JD into atomic requirements."""
+def decompose_jd(jd_text: str) -> tuple[list[dict], str]:
+    """Decompose the JD into atomic requirements; returns (requirements, title)."""
     user = DECOMPOSE_USER.format(jd=jd_text)
     data = llm.chat_json(DECOMPOSE_SYSTEM, user)
-    if isinstance(data, list):
-        raw = data
-    elif isinstance(data, dict):
+    title = ""
+    if isinstance(data, dict):
+        title = data.get("title", "")
         raw = data.get("requirements") or data.get("items") or []
+    elif isinstance(data, list):
+        raw = data
     else:
         raw = []
-    return [_normalize_requirement(item, i + 1) for i, item in enumerate(raw)]
+    return [_normalize_requirement(item, i + 1) for i, item in enumerate(raw)], title
 
 
 def _normalize_requirement(item, idx: int) -> dict:
@@ -167,10 +171,11 @@ def _compute_score(results: list[dict]) -> int:
     return round(100 * total / len(results))
 
 
-def _summarize(results: list[dict], analysis: str) -> dict:
+def _summarize(results: list[dict], analysis: str, title: str = "") -> dict:
     return {
         "fit_score": _compute_score(results),
         "analysis": analysis,
+        "title": title,
         "requirements": results,
         "matched": sum(1 for r in results if r["verdict"] == "matched"),
         "partial": sum(1 for r in results if r["verdict"] == "partial"),
@@ -203,7 +208,7 @@ def generate_analysis_stream(results: list[dict]):
 
 def analyze(resume_text: str, jd_text: str) -> dict:
     """Non-streaming full pipeline."""
-    requirements = decompose_jd(jd_text)
+    requirements, title = decompose_jd(jd_text)
     if not requirements:
         return {"error": "無法從 JD 拆解出要求", "requirements": []}
 
@@ -215,13 +220,13 @@ def analyze(resume_text: str, jd_text: str) -> dict:
     judgments = _judge_all(requirements, evidence_map)
     results = _build_results(requirements, judgments, evidence_map, best_sim_map)
     analysis = generate_analysis(results)
-    return _summarize(results, analysis)
+    return _summarize(results, analysis, title)
 
 
 def analyze_stream(resume_text: str, jd_text: str):
     """Streaming full pipeline: yields event dicts (type: stage / chunk / result / error)."""
     yield {"type": "stage", "message": "拆解 JD…"}
-    requirements = decompose_jd(jd_text)
+    requirements, title = decompose_jd(jd_text)
     if not requirements:
         yield {"type": "error", "message": "無法從 JD 拆解出要求"}
         return
@@ -244,4 +249,4 @@ def analyze_stream(resume_text: str, jd_text: str):
         parts.append(chunk)
         yield {"type": "chunk", "text": chunk}
 
-    yield {"type": "result", "data": _summarize(results, "".join(parts))}
+    yield {"type": "result", "data": _summarize(results, "".join(parts), title)}

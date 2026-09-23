@@ -46,7 +46,6 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
-  // chat context = the resume/jd/analysis of the currently-open analysis or record
   const [session, setSession] = useState({ resume: '', jd: '' });
 
   const [records, setRecords] = useState([]);
@@ -65,6 +64,17 @@ export default function App() {
 
   async function refreshRecords() {
     try { setRecords(await listRecords(userId)); } catch { /* ignore */ }
+  }
+
+  function handleNewAnalysis() {
+    setResume('');
+    setJd('');
+    setResult(null);
+    setAnalysis('');
+    setMessages([]);
+    setCurrentRecordId(null);
+    setSession({ resume: '', jd: '' });
+    setError('');
   }
 
   async function handleUpload(file, setText) {
@@ -101,6 +111,7 @@ export default function App() {
               resume,
               jd,
               analysis: data.analysis || '',
+              title: data.title || '',
               fit_score: data.fit_score,
               matched: data.matched,
               partial: data.partial,
@@ -198,120 +209,123 @@ export default function App() {
   }
 
   return (
-    <div className="container">
-      <header>
-        <h1>💼 求職助手 Job Fit Assistant</h1>
-        <p>上傳履歷，貼上 JobsDB 職位描述，比對符合度；分析後還可追問、聯網查公司資訊。</p>
-        <a className="repo-link" href="https://github.com/peterszetotszho-code/JobMatchingWeb" target="_blank" rel="noreferrer">
-          ⭐ View on GitHub
-        </a>
-      </header>
-
-      {records.length > 0 && (
-        <div className="history">
-          <h3>📂 歷史記錄 History</h3>
+    <div className="app">
+      <aside className="sidebar">
+        <div className="sidebar-head">
+          <button className="primary" onClick={handleNewAnalysis}>➕ 新建分析 New</button>
+        </div>
+        <h3 className="sidebar-title">📂 歷史記錄 History</h3>
+        {records.length === 0 ? (
+          <p className="sidebar-empty">尚無記錄</p>
+        ) : (
           <div className="history-list">
             {records.map((r) => (
               <div key={r.id} className={`history-item ${r.id === currentRecordId ? 'active' : ''}`}>
-                <div className="history-main">
-                  <div className="history-title">{r.title}</div>
-                  <div className="history-meta">
-                    {r.fit_score}% 符合度 · {new Date(r.created_at).toLocaleString()}
-                  </div>
-                </div>
+                <div className="history-title">{r.title}</div>
+                <div className="history-meta">{r.fit_score}% · {new Date(r.created_at).toLocaleString()}</div>
                 <div className="history-actions">
-                  <button className="ghost" onClick={() => openRecord(r.id)}>💬 繼續</button>
-                  <button className="ghost" onClick={() => loadRecordToInputs(r.id)}>📋 載入輸入</button>
-                  <button className="ghost danger" onClick={() => handleDelete(r.id)}>🗑 刪除</button>
+                  <button className="ghost" title="繼續對話" onClick={() => openRecord(r.id)}>💬</button>
+                  <button className="ghost" title="載入履歷/JD 到輸入框" onClick={() => loadRecordToInputs(r.id)}>📋</button>
+                  <button className="ghost danger" title="刪除記錄" onClick={() => handleDelete(r.id)}>🗑</button>
                 </div>
               </div>
             ))}
           </div>
+        )}
+      </aside>
+
+      <main className="main">
+        <header>
+          <h1>💼 求職助手 Job Fit Assistant</h1>
+          <p>上傳履歷，貼上 JobsDB 職位描述，比對符合度；分析後還可追問、聯網查公司資訊。</p>
+          <a className="repo-link" href="https://github.com/peterszetotszho-code/JobMatchingWeb" target="_blank" rel="noreferrer">
+            ⭐ View on GitHub
+          </a>
+        </header>
+
+        <div className="grid">
+          <TextPanel
+            title="📄 你的履歷 Your Resume"
+            value={resume}
+            onChange={setResume}
+            onUpload={() => resumeFileRef.current?.click()}
+            placeholder="貼上履歷文字，或上傳 PDF / DOCX / TXT…"
+          />
+          <TextPanel
+            title="📋 職位描述 Job Description"
+            value={jd}
+            onChange={setJd}
+            onUpload={() => jdFileRef.current?.click()}
+            placeholder="從 JobsDB 複製 JD 文字貼到這裡，或上傳檔案…"
+          />
         </div>
-      )}
 
-      <div className="grid">
-        <TextPanel
-          title="📄 你的履歷 Your Resume"
-          value={resume}
-          onChange={setResume}
-          onUpload={() => resumeFileRef.current?.click()}
-          placeholder="貼上履歷文字，或上傳 PDF / DOCX / TXT…"
-        />
-        <TextPanel
-          title="📋 職位描述 Job Description"
-          value={jd}
-          onChange={setJd}
-          onUpload={() => jdFileRef.current?.click()}
-          placeholder="從 JobsDB 複製 JD 文字貼到這裡，或上傳檔案…"
-        />
-      </div>
+        <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+          onChange={(e) => handleUpload(e.target.files?.[0], setResume)} />
+        <input ref={jdFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
+          onChange={(e) => handleUpload(e.target.files?.[0], setJd)} />
 
-      <input ref={resumeFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
-        onChange={(e) => handleUpload(e.target.files?.[0], setResume)} />
-      <input ref={jdFileRef} type="file" accept=".pdf,.docx,.txt,.md" style={{ display: 'none' }}
-        onChange={(e) => handleUpload(e.target.files?.[0], setJd)} />
-
-      <div className="actions">
-        <button className="primary" onClick={handleAnalyze}
-          disabled={loading || !resume.trim() || !jd.trim()}>
-          {loading ? '分析中…' : '🔍 開始分析 Analyze'}
-        </button>
-      </div>
-
-      {error && <div className="error">⚠️ {error}</div>}
-      {loading && <div className="stage">⏳ {stage}</div>}
-
-      {(analysis || result) && (
-        <div className="result">
-          {result && (
-            <>
-              <div className="metrics">
-                <Metric num={`${result.fit_score}%`} label="符合度 Fit Score" color="#2563eb" />
-                <Metric num={result.matched} label="匹配 Matched" color="#16a34a" />
-                <Metric num={result.partial} label="部分 Partial" color="#d97706" />
-                <Metric num={result.gap} label="缺口 Gap" color="#dc2626" />
-              </div>
-              <div className="bar">
-                <div className="bar-fill" style={{ width: `${result.fit_score}%` }} />
-              </div>
-            </>
-          )}
-          <h3>📊 分析結果 Analysis</h3>
-          <p className="analysis">
-            {analysis}
-            {loading && <span className="cursor">▌</span>}
-          </p>
+        <div className="actions">
+          <button className="primary" onClick={handleAnalyze}
+            disabled={loading || !resume.trim() || !jd.trim()}>
+            {loading ? '分析中…' : '🔍 開始分析 Analyze'}
+          </button>
         </div>
-      )}
 
-      {result && (
-        <div className="chat">
-          <h3>💬 求職追問 Ask Follow-up</h3>
-          <div className="chat-log">
-            {messages.map((m, i) => (
-              <div key={i} className={`msg ${m.role}`}>
-                <div className="msg-content">{m.content}</div>
-              </div>
-            ))}
-            {chatLoading && (
-              <div className="msg assistant">
-                <div className="chat-stage">⏳ {chatStage}</div>
-                <div className="msg-content">{chatDraft}<span className="cursor">▌</span></div>
-              </div>
+        {error && <div className="error">⚠️ {error}</div>}
+        {loading && <div className="stage">⏳ {stage}</div>}
+
+        {(analysis || result) && (
+          <div className="result">
+            {result && (
+              <>
+                <div className="metrics">
+                  <Metric num={`${result.fit_score}%`} label="符合度 Fit Score" color="#2563eb" />
+                  <Metric num={result.matched} label="匹配 Matched" color="#16a34a" />
+                  <Metric num={result.partial} label="部分 Partial" color="#d97706" />
+                  <Metric num={result.gap} label="缺口 Gap" color="#dc2626" />
+                </div>
+                <div className="bar">
+                  <div className="bar-fill" style={{ width: `${result.fit_score}%` }} />
+                </div>
+              </>
             )}
+            <h3>📊 分析結果 Analysis</h3>
+            <p className="analysis">
+              {analysis}
+              {loading && <span className="cursor">▌</span>}
+            </p>
           </div>
-          <div className="chat-input">
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }}
-              placeholder="例如：這間公司是做什麼的？／我該怎麼補強才能提高符合度？"
-            />
-            <button onClick={sendMessage} disabled={chatLoading || !input.trim()}>送出</button>
+        )}
+
+        {result && (
+          <div className="chat">
+            <h3>💬 求職追問 Ask Follow-up</h3>
+            <div className="chat-log">
+              {messages.map((m, i) => (
+                <div key={i} className={`msg ${m.role}`}>
+                  <div className="msg-content">{m.content}</div>
+                </div>
+              ))}
+              {chatLoading && (
+                <div className="msg assistant">
+                  <div className="chat-stage">⏳ {chatStage}</div>
+                  <div className="msg-content">{chatDraft}<span className="cursor">▌</span></div>
+                </div>
+              )}
+            </div>
+            <div className="chat-input">
+              <input
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') sendMessage(); }}
+                placeholder="例如：這間公司是做什麼的？／我該怎麼補強才能提高符合度？"
+              />
+              <button onClick={sendMessage} disabled={chatLoading || !input.trim()}>送出</button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </main>
     </div>
   );
 }

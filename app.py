@@ -42,23 +42,16 @@ def _render_result(result: dict) -> None:
     c4.metric("缺口 Gap", result["gap"])
     st.progress(result["fit_score"] / 100)
 
-    st.subheader("📊 逐條要求分析 Requirement Breakdown")
-    for r in result["requirements"]:
-        label = VERDICT_META.get(r["verdict"], "?")
-        with st.expander(f"{label} ｜ {r['requirement']}", expanded=(r["verdict"] == "gap")):
-            st.markdown(f"**分類 Category:** `{r['category']}`")
-            st.markdown(f"**說明 Reason:** {r['reason']}")
-            st.markdown("**履歷證據 Resume evidence:**")
-            for e in r["evidence"]:
-                st.markdown(f"- {e}")
+    st.subheader("📝 總結 Summary")
+    st.write(result.get("summary", ""))
 
-    st.subheader("🕳️ 主要缺口 Key Gaps")
-    gaps = [r for r in result["requirements"] if r["verdict"] == "gap"]
-    if gaps:
-        for g in gaps:
-            st.markdown(f"- {g['requirement']}")
-    else:
-        st.success("沒有明顯缺口，符合度很高！")
+    with st.expander("📎 逐條細節與證據（點開查看）"):
+        for r in result["requirements"]:
+            label = VERDICT_META.get(r["verdict"], "?")
+            st.markdown(f"**{label}** ｜ {r['requirement']}")
+            st.markdown(f"- {r['reason']}")
+            for e in r["evidence"]:
+                st.markdown(f"  · 證據：{e}")
 
 
 # ---------- 啟動時預先載入模型 ----------

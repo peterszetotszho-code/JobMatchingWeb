@@ -9,24 +9,47 @@ license: mit
 # Job Fit Assistant
 
 > **Repository:** [github.com/peterszetotszho-code/JobMatchingWeb](https://github.com/peterszetotszho-code/JobMatchingWeb)
-> **Live demo:** https://slot-collectibles-arise-premiere.trycloudflare.com (temporary Cloudflare Tunnel — may change)
 
-A resume-to-job-description matching tool built with **LLM + RAG**. Upload your resume, paste a job description (e.g. from JobsDB), and the app decomposes the JD into atomic requirements, retrieves supporting evidence from your resume, judges fit per requirement, and outputs a **fit score + a detailed analysis**. It also supports follow-up Q&A with optional live web search.
+A **resume-to-job-description matching tool** for the Hong Kong job market, powered by **LLM + RAG**. Paste a job description (e.g. from JobsDB), upload your resume, and the app decomposes the JD into atomic requirements, retrieves supporting evidence from your resume, judges your fit against each requirement, and returns a **fit score plus a detailed, human-readable analysis**. It also supports follow-up Q&A with optional live web search, and keeps a private per-user match history.
+
+## Features
+
+- **📄 Resume + JD input** — paste text or upload PDF / DOCX / TXT files.
+- **🔍 RAG matching** — a `decompose → retrieve → judge → score` pipeline; the LLM judges each requirement against retrieved resume evidence rather than relying on a naive similarity threshold.
+- **📊 Fit score + analysis** — a deterministic 0–100 score plus a 300+ word Chinese analysis, streamed token-by-token to the UI.
+- **💬 Follow-up Q&A** — an LLM router decides whether to answer from local context (resume / JD / analysis) or live web search (DuckDuckGo, Hong Kong-oriented).
+- **📂 Match history** — per-user records (SQLite) with LLM-generated job titles on the left sidebar; continue a conversation, reload a CV/JD into the inputs, or delete a record.
+- **🌏 Bilingual UI** — Traditional Chinese + English, tailored for the Hong Kong market.
+- **🚀 Single-server deploy** — FastAPI serves both the REST/SSE API and the built React frontend; ships with a Dockerfile for cloud deployment.
 
 ## Tech Stack
-| Part | Tech |
+
+| Layer | Technology |
 |---|---|
 | Frontend | React + Vite |
 | Backend | FastAPI (REST + SSE streaming) |
-| LLM | DeepSeek (`deepseek-flash`, thinking disabled) |
-| Embeddings | `paraphrase-multilingual-MiniLM-L12-v2` (local, Chinese + English) |
-| Web search | DuckDuckGo (free, no API key) |
-| File parsing | pypdf / python-docx |
+| LLM | DeepSeek (`deepseek-flash`, thinking disabled for low latency) |
+| Embeddings | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (local, Chinese + English) |
+| Web search | DuckDuckGo via `ddgs` (free, no API key) |
+| File parsing | `pypdf` / `python-docx` |
+| Storage | SQLite (stdlib, per-user records) |
+| Deployment | Docker (multi-stage build) → Hugging Face Spaces |
 
 ## Architecture
+
 ```
 React (Vite) ──HTTP/JSON + SSE──▶ FastAPI (api.py) ──▶ matcher / chat ──▶ DeepSeek + local embeddings + DuckDuckGo
 ```
+
+## How it works
+
+1. **Decompose** — the LLM splits the JD into atomic, independently-checkable requirements (plus a one-line job title).
+2. **Retrieve** — each requirement is embedded and matched against resume line-chunks to gather citable evidence.
+3. **Judge** — the LLM judges each requirement (`matched / partial / gap`) using the retrieved evidence.
+4. **Score** — a 0–100 fit score is computed deterministically (never asked of the LLM).
+5. **Analyze** — the LLM writes a detailed 300+ word analysis, streamed to the UI.
+
+Follow-up Q&A: an LLM router decides whether a question needs local context (resume / JD / analysis) or live web search (DuckDuckGo, Hong Kong-oriented), then answers in plain Chinese.
 
 ## Setup
 
@@ -73,6 +96,7 @@ cd frontend && npm run dev
 ```
 
 ## API
+
 | Method | Path | Description |
 |---|---|---|
 | GET | `/api/health` | Health check |
@@ -81,17 +105,14 @@ cd frontend && npm run dev
 | POST | `/api/analyze/stream` | Streaming analysis (SSE) |
 | POST | `/api/ask` | Follow-up Q&A (non-streaming) |
 | POST | `/api/ask/stream` | Follow-up Q&A (SSE) |
-
-## How it works
-1. **Decompose** — the LLM splits the JD into atomic requirements.
-2. **Retrieve** — each requirement is embedded and matched against resume chunks (evidence).
-3. **Judge** — the LLM judges each requirement (`matched / partial / gap`) using the retrieved evidence.
-4. **Score** — a 0–100 fit score is computed deterministically (never asked of the LLM).
-5. **Analyze** — the LLM writes a detailed 300+ char analysis (streamed to the UI).
-
-Follow-up Q&A: an LLM router decides whether the question needs local context (resume / JD / analysis) or live web search (DuckDuckGo), then answers in plain Chinese.
+| POST | `/api/records` | Save a completed analysis as a history record |
+| GET | `/api/records` | List a user's history records |
+| GET | `/api/records/{id}` | Get a full record (with messages) |
+| DELETE | `/api/records/{id}` | Delete a record and its messages |
+| POST | `/api/records/{id}/messages` | Append a chat message to a record |
 
 ## Project structure
+
 ```
 RAG Trail/
 ├── api.py              # FastAPI backend (REST + SSE)
@@ -101,8 +122,10 @@ RAG Trail/
 ├── llm.py              # DeepSeek client (incl. streaming)
 ├── embeddings.py       # local embeddings
 ├── resume_io.py        # PDF / DOCX / text extraction
+├── store.py            # SQLite persistence for per-user match history
 ├── config.py           # settings
 ├── frontend/           # React + Vite frontend
+├── Dockerfile          # multi-stage build for cloud deployment
 ├── scripts/smoke_test.py
 └── data/               # sample resume + JD
 ```

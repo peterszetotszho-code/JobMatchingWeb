@@ -18,10 +18,10 @@ def _load_dotenv() -> None:
 
 _load_dotenv()
 
-# DeepSeek (OpenAI-compatible API)
-DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY", "")
-DEEPSEEK_BASE_URL = "https://api.deepseek.com"
-DEEPSEEK_MODEL = "deepseek-flash"  # cheap & fast; switch to "deepseek-v4-pro" for stronger reasoning
+# LLM (OpenAI-compatible API). Override via environment variables if needed.
+LLM_API_KEY = os.environ.get("LLM_API_KEY") or os.environ.get("DEEPSEEK_API_KEY", "")
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.environ.get("LLM_MODEL", "deepseek-flash")  # cheap & fast
 
 # Local embeddings (multilingual: Traditional Chinese + English)
 # MiniLM by default: small, CPU-friendly, much faster than BGE-M3;

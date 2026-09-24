@@ -1,4 +1,4 @@
-"""DeepSeek (OpenAI-compatible) client."""
+"""LLM client (OpenAI-compatible)."""
 from __future__ import annotations
 
 import json
@@ -9,7 +9,7 @@ import config
 
 _client: OpenAI | None = None
 
-# deepseek-flash is a reasoning model; disabling thinking makes it ~3x faster and cheaper
+# the model is a reasoning model; disabling thinking makes it ~3x faster and cheaper
 _THINKING = {"thinking": {"type": "disabled"}}
 
 
@@ -17,8 +17,8 @@ def get_client() -> OpenAI:
     global _client
     if _client is None:
         _client = OpenAI(
-            api_key=config.DEEPSEEK_API_KEY,
-            base_url=config.DEEPSEEK_BASE_URL,
+            api_key=config.LLM_API_KEY,
+            base_url=config.LLM_BASE_URL,
         )
     return _client
 
@@ -33,7 +33,7 @@ def _messages(system: str, user: str) -> list[dict]:
 def chat(system: str, user: str, temperature: float = 0.0) -> str:
     """Call the LLM and return plain text."""
     resp = get_client().chat.completions.create(
-        model=config.DEEPSEEK_MODEL,
+        model=config.LLM_MODEL,
         messages=_messages(system, user),
         temperature=temperature,
         extra_body=_THINKING,
@@ -44,7 +44,7 @@ def chat(system: str, user: str, temperature: float = 0.0) -> str:
 def chat_stream(system: str, user: str, temperature: float = 0.0):
     """Streaming variant: yields text chunks."""
     resp = get_client().chat.completions.create(
-        model=config.DEEPSEEK_MODEL,
+        model=config.LLM_MODEL,
         messages=_messages(system, user),
         temperature=temperature,
         stream=True,

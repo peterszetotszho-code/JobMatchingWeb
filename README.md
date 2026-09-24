@@ -28,7 +28,7 @@ A **resume-to-job-description matching tool** for the Hong Kong job market, powe
 |---|---|
 | Frontend | React + Vite |
 | Backend | FastAPI (REST + SSE streaming) |
-| LLM | DeepSeek (`deepseek-flash`, thinking disabled for low latency) |
+| LLM | Cloud LLM (OpenAI-compatible API) |
 | Embeddings | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (local, Chinese + English) |
 | Web search | DuckDuckGo via `ddgs` (free, no API key) |
 | File parsing | `pypdf` / `python-docx` |
@@ -38,7 +38,7 @@ A **resume-to-job-description matching tool** for the Hong Kong job market, powe
 ## Architecture
 
 ```
-React (Vite) ──HTTP/JSON + SSE──▶ FastAPI (api.py) ──▶ matcher / chat ──▶ DeepSeek + local embeddings + DuckDuckGo
+React (Vite) ──HTTP/JSON + SSE──▶ FastAPI (api.py) ──▶ matcher / chat ──▶ LLM + local embeddings + DuckDuckGo
 ```
 
 ## How it works
@@ -63,10 +63,10 @@ source .venv/bin/activate
 
 pip install -r requirements.txt
 ```
-Set your DeepSeek API key (either):
+Set your LLM API key (either):
 ```bash
-set DEEPSEEK_API_KEY=sk-xxxx        # Windows cmd
-export DEEPSEEK_API_KEY=sk-xxxx     # bash
+set LLM_API_KEY=sk-xxxx        # Windows cmd
+export LLM_API_KEY=sk-xxxx     # bash
 # or copy .env.example to .env and fill in the key
 ```
 
@@ -119,7 +119,7 @@ RAG Trail/
 ├── matcher.py          # core: decompose → retrieve → judge → score → analyze
 ├── chat.py             # follow-up Q&A (local RAG + web search)
 ├── web_search.py       # DuckDuckGo search (HK-oriented)
-├── llm.py              # DeepSeek client (incl. streaming)
+├── llm.py              # LLM client (incl. streaming)
 ├── embeddings.py       # local embeddings
 ├── resume_io.py        # PDF / DOCX / text extraction
 ├── store.py            # SQLite persistence for per-user match history
